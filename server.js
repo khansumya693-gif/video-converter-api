@@ -1,45 +1,49 @@
-const express = require("express");
-const { exec } = require("child_process");
-const path = require("path");
-const fs = require("fs");
+import express from "express";
+import { exec } from "child_process";
+import fs from "fs";
+import path from "path";
 
 const app = express();
-const VIDEO_DIR = path.join(__dirname, "videos");
+const PORT = process.env.PORT || 3000;
 
-// ভিডিও folder create যদি না থাকে
-if (!fs.existsSync(VIDEO_DIR)) fs.mkdirSync(VIDEO_DIR);
+const VIDEOS_DIR = path.join(process.cwd(), "videos");
+if (!fs.existsSync(VIDEOS_DIR)) fs.mkdirSync(VIDEOS_DIR);
 
-// Health check route for Render
 app.get("/healthz", (req, res) => res.send("OK"));
 
-// YouTube to MP4 endpoint
 app.get("/make-mp4", (req, res) => {
   const url = req.query.url;
-  if (!url) return res.status(400).send("Missing URL");
+  if (!url) return res.status(400).json({ error: "No URL provided" });
 
-  const filename = `yt_${Date.now()}.mp4`;
-  const filepath = path.join(VIDEO_DIR, filename);
+  const id = Date.now();
+  const output = path.join(VIDEOS_DIR, `yt_${id}.mp4`);
 
-  // yt-dlp command using system pip-installed yt-dlp + ffmpeg
-  const cmd = `yt-dlp -f bestvideo+bestaudio --merge-output-format mp4 -o "${filepath}" "${url}"`;
+  const cmd = `yt-dlp -f mp4 -o "${output}" "${url}"`;
 
-  exec(cmd, (error, stdout, stderr) => {
-    if (error) {
-      console.error("YT-DLP ERROR:", stderr || error.message);
-      return res.status(500).send("Download/Convert failed");
+  exec(cmd, (err, stdout, stderr) => {
+    if (err) {
+      console.error("yt-dlp error:", stderr);
+      return res.status(500).json({
+        status: "failed",
+        message: stderr || err.message
+      });
     }
 
-    // Success → Return playback + download links
+    if (!fs.existsSync(output)) {
+      return res.status(500).json({
+        status: "failed",
+        message: "Video file not created"
+      });
+    }
+
     res.json({
       status: "ok",
-      playback: `/videos/${filename}`,
-      download: `/videos/${filename}`
+      playback: `/videos/${path.basename(output)}`,
+      download: `/videos/${path.basename(output)}`
     });
   });
 });
 
-// Serve videos folder statically
-app.use("/videos", express.static(VIDEO_DIR));
+app.use("/videos", express.static(VIDEOS_DIR));
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+app.listen(PORT, () => console.log("Server running on", PORT));
