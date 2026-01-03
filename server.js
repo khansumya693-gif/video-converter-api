@@ -34,12 +34,10 @@ app.get("/healthz", (req, res) => res.send("OK"));
 
 /**
  * ১. এই রাউটটি Vercel ব্যাকগ্রাউন্ডে কল করবে।
- * এর ফলে আপনার আসল ডোমেইন হাইড থাকবে।
  */
 app.get("/cdn/:token", (req, res) => {
   const token = req.params.token;
   
-  // টোকেন থেকে অরিজিনাল ফাইল পাথ খুঁজে বের করা
   const id = Object.keys(fileMap).find(key => 
     crypto.createHash('md5').update(key).digest('hex') === token
   );
@@ -49,12 +47,11 @@ app.get("/cdn/:token", (req, res) => {
     return res.status(404).send("File not found");
   }
 
-  // ফাইলটি ডাউনলোড হিসেবে সার্ভ করা
-  res.download(path.resolve(filePath), `video_${Date.now()}.mp4`);
+  res.download(path.resolve(filePath), `video_480p_${Date.now()}.mp4`);
 });
 
 /**
- * ২. মেইন মেক-এমপি৪ এন্ডপয়েন্ট
+ * ২. মেইন মেক-এমপি৪ এন্ডপয়েন্ট (ফিক্সড রেজোলিউশন 480p)
  */
 app.get("/make-mp4", (req, res) => {
   const url = req.query.url;
@@ -63,23 +60,23 @@ app.get("/make-mp4", (req, res) => {
   const filename = `${Date.now()}.mp4`;
   const out = path.join(VIDEO_DIR, filename);
 
-  // আপনার দেওয়া yt-dlp কমান্ড
-  const cmd = `yt-dlp --cookies ./cookies.txt --merge-output-format mp4 -f "bv*+ba/b" --js-runtimes node -o "${out}" "${url}"`;
+  /**
+   * কমান্ড আপডেট: 
+   * "bestvideo[height<=480][ext=mp4]+bestaudio[ext=m4a]" 
+   * এটি সর্বোচ্চ 480p ভিডিও এবং অডিও ডাউনলোড করবে।
+   */
+  const cmd = `yt-dlp --cookies ./cookies.txt --merge-output-format mp4 -f "bestvideo[height<=480][ext=mp4]+bestaudio[ext=m4a]/best[height<=480][ext=mp4]/b" --js-runtimes node -o "${out}" "${url}"`;
 
   exec(cmd, { maxBuffer: 1024 * 1024 * 50 }, (err, stdout, stderr) => {
     if (err) {
       return res.json({ status: "failed", message: stderr || err.message });
     }
 
-    // ১. একটি র্যান্ডম আইডি জেনারেট করা
     const id = crypto.randomBytes(6).toString("hex");
     fileMap[id] = out;
     saveMap(); 
 
-    // ২. আইডি মাস্ক করে টোকেন তৈরি (MD5 Hash)
     const maskedToken = crypto.createHash('md5').update(id).digest('hex');
-
-    // ৩. মাস্কড লিংক জেনারেট করা (যা ইউজার দেখবে)
     const secureUrl = `${VERCEL_DOMAIN}/${maskedToken}`;
 
     res.json({
@@ -90,7 +87,6 @@ app.get("/make-mp4", (req, res) => {
   });
 });
 
-// স্ট্যাটিক ফোল্ডার (প্রয়োজনে ব্যবহারের জন্য)
 app.use("/videos", express.static("videos"));
 
 app.listen(PORT, () => {
