@@ -10,16 +10,15 @@ app.get("/make-mp4", (req, res) => {
   const url = req.query.url;
   if (!url) return res.json({ status: "failed", message: "Missing url" });
 
-  // শুধু direct playback URL বের করা হবে
-  const cmd = `yt-dlp --cookies ./cookies.txt --js-runtimes node -g -f "bv*+ba/b" "${url}"`;
+  // merged video+audio mp4 googlevideo link
+  const cmd = `yt-dlp --cookies ./cookies.txt --js-runtimes node -g -f "b[ext=mp4]/b" "${url}"`;
 
   exec(cmd, { maxBuffer: 1024 * 1024 * 10 }, (err, stdout, stderr) => {
     if (err) {
       return res.json({ status: "failed", message: stderr || err.message });
     }
 
-    const lines = stdout.trim().split("\n");
-    const playbackUrl = lines[0]; // googlevideo.com/videoplayback...
+    const playbackUrl = stdout.trim().split("\n")[0];
 
     res.json({
       status: "ok",
@@ -29,4 +28,6 @@ app.get("/make-mp4", (req, res) => {
   });
 });
 
-app.listen(PORT, () => console.log("Server running on", PORT));
+app.listen(PORT, () => {
+  console.log("Server running on", PORT);
+});
