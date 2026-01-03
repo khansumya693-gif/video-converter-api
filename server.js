@@ -1,20 +1,26 @@
-const express = require("express");
-const { exec } = require("child_process");
-const fs = require("fs");
-const app = express();
+import express from "express";
+import { exec } from "child_process";
+import fs from "fs";
 
-app.get("/healthz", (_, res) => res.send("OK"));
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+app.get("/healthz", (req, res) => {
+  res.send("OK");
+});
 
 app.get("/make-mp4", (req, res) => {
   const url = req.query.url;
   if (!url) return res.json({ status: "failed", message: "Missing url" });
 
+  if (!fs.existsSync("videos")) fs.mkdirSync("videos");
+
   const out = `videos/${Date.now()}.mp4`;
   const cmd = `yt-dlp --cookies ./cookies.txt --merge-output-format mp4 -f "bv*+ba/b" --js-runtimes node -o "${out}" "${url}"`;
 
-  exec(cmd, (err, stdout, stderr) => {
+  exec(cmd, { maxBuffer: 1024 * 1024 * 20 }, (err, stdout, stderr) => {
     if (err) {
-      return res.json({ status: "failed", message: stderr });
+      return res.json({ status: "failed", message: stderr || err.message });
     }
     res.json({
       status: "ok",
@@ -26,4 +32,6 @@ app.get("/make-mp4", (req, res) => {
 
 app.use("/videos", express.static("videos"));
 
-app.listen(3000, () => console.log("Server running"));
+app.listen(PORT, () => {
+  console.log("Server running on port", PORT);
+});
