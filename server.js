@@ -6,22 +6,23 @@ import path from "path";
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Health check
+// Health check endpoint
 app.get("/healthz", (req, res) => {
   res.send("OK");
 });
 
-// Convert endpoint
+// Convert video endpoint
 app.get("/make-mp4", (req, res) => {
   const url = req.query.url;
   if (!url) return res.json({ status: "failed", message: "Missing url" });
 
+  // Ensure videos folder exists
   if (!fs.existsSync("videos")) fs.mkdirSync("videos");
 
   const filename = `${Date.now()}.mp4`;
   const out = path.join("videos", filename);
 
-  // yt-dlp + ffmpeg merge video + audio
+  // yt-dlp + ffmpeg merge video + audio into single mp4
   const cmd = `yt-dlp --cookies ./cookies.txt -f "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]" --merge-output-format mp4 -o "${out}" "${url}"`;
 
   exec(cmd, { maxBuffer: 1024 * 1024 * 50 }, (err, stdout, stderr) => {
@@ -40,9 +41,10 @@ app.get("/make-mp4", (req, res) => {
   });
 });
 
-// Serve videos folder
+// Serve videos folder statically
 app.use("/videos", express.static("videos"));
 
+// Start server
 app.listen(PORT, "0.0.0.0", () => {
-  console.log("Server running on port", PORT);
+  console.log(`Server running on port ${PORT}`);
 });
