@@ -7,19 +7,36 @@ import crypto from "crypto";
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Map for id -> file
-const fileMap = {};
+const VIDEO_DIR = "videos";
+const MAP_FILE = "fileMap.json";
+
+// Load persistent map or create new
+let fileMap = {};
+if (fs.existsSync(MAP_FILE)) {
+  try {
+    fileMap = JSON.parse(fs.readFileSync(MAP_FILE, "utf-8"));
+  } catch (e) {
+    console.error("Error reading fileMap.json", e);
+    fileMap = {};
+  }
+}
+
+// Helper: save map to JSON file
+const saveMap = () => {
+  fs.writeFileSync(MAP_FILE, JSON.stringify(fileMap, null, 2));
+};
+
+// Ensure videos folder exists
+if (!fs.existsSync(VIDEO_DIR)) fs.mkdirSync(VIDEO_DIR);
 
 // Health check
 app.get("/healthz", (req, res) => res.send("OK"));
 
-// Short URL serve
+// Serve short URL
 app.get("/d/:id", (req, res) => {
   const id = req.params.id;
   const file = fileMap[id];
-  if (!file || !fs.existsSync(file)) {
-    return res.status(404).send("Not found");
-  }
+  if (!file || !fs.existsSync(file)) return res.status(404).send("Not found");
   res.sendFile(path.resolve(file));
 });
 
@@ -28,20 +45,19 @@ app.get("/make-mp4", (req, res) => {
   const url = req.query.url;
   if (!url) return res.json({ status: "failed", message: "Missing url" });
 
-  if (!fs.existsSync("videos")) fs.mkdirSync("videos");
-
   const filename = `${Date.now()}.mp4`;
-  const filepath = path.join("videos", filename);
+  const filepath = path.join(VIDEO_DIR, filename);
 
-  // yt-dlp + merge audio/video
+  // yt-dlp + ffmpeg merge video + audio
   const cmd = `yt-dlp --cookies ./cookies.txt -f "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]" --merge-output-format mp4 -o "${filepath}" "${url}"`;
 
   exec(cmd, { maxBuffer: 1024 * 1024 * 50 }, (err, stdout, stderr) => {
     if (err) return res.json({ status: "failed", message: stderr || err.message });
 
-    // Generate random short ID
+    // Generate persistent short ID
     const id = crypto.randomBytes(4).toString("hex");
     fileMap[id] = filepath;
+    saveMap(); // Save to file
 
     const baseUrl = `${req.protocol}://${req.get("host")}`;
     const shortUrl = `${baseUrl}/d/${id}`;
@@ -54,4 +70,4 @@ app.get("/make-mp4", (req, res) => {
   });
 });
 
-app.listen(PORT, "0.0.0.0", () => console.log("Server running on port", PORT));
+app.listen(PORT, "0.0.0.0", () => console.log(`Server running on port ${PORT}`));
