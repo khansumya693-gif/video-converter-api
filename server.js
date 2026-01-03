@@ -7,9 +7,13 @@ const fs = require("fs");
 const app = express();
 const VIDEO_DIR = path.join(__dirname, "videos");
 
-// ভিডিও folder তৈরি যদি না থাকে
+// ভিডিও folder create
 if (!fs.existsSync(VIDEO_DIR)) fs.mkdirSync(VIDEO_DIR);
 
+// Health check route
+app.get("/healthz", (req, res) => res.send("OK"));
+
+// YouTube to MP4 endpoint
 app.get("/make-mp4", async (req, res) => {
   const url = req.query.url;
   if (!url) return res.status(400).send("Missing URL");
@@ -18,7 +22,6 @@ app.get("/make-mp4", async (req, res) => {
   const filepath = path.join(VIDEO_DIR, filename);
 
   try {
-    // yt-dlp call
     await ytdlp(url, {
       format: "bestvideo+bestaudio",
       merge_output_format: "mp4",
