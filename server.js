@@ -3,15 +3,18 @@ import { exec } from "child_process";
 import fs from "fs";
 import path from "path";
 import crypto from "crypto";
+import cors from "cors"; // CORS সমস্যা এড়াতে এটি ব্যবহার করা ভালো
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+app.use(cors()); // CORS Enable করা হলো
+
 const VIDEO_DIR = "videos";
 const MAP_FILE = "fileMap.json";
 
-// ১. আপনার Vercel ডোমেইন লিংক (এখানে আপনার তৈরি করা লিংকটি দেওয়া হয়েছে)
-const VERCEL_DOMAIN = "https://next-update-tube-download-manager.vercel.app/download";
+// আপনার Vercel ডোমেইন লিংক (হুবহু এটিই থাকবে)
+const VERCEL_DOMAIN = "https://next-update-tube-download-manager.vercel.app";
 
 // Load persistent map or create new
 let fileMap = {};
@@ -35,28 +38,28 @@ if (!fs.existsSync(VIDEO_DIR)) fs.mkdirSync(VIDEO_DIR);
 // Health check
 app.get("/healthz", (req, res) => res.send("OK"));
 
-/** * ২. ইন্টারনাল রাউট (Masked)
- * এটি আপনার আসল ফাইল সার্ভ করবে। 
- * Vercel ব্যাকগ্রাউন্ডে এই রাউট থেকেই ডাটা টেনে নিবে।
+/** * ১. এই রাউটটি Vercel কল করবে 
+ * এটি ছাড়া আপনার ৪-০-৪ এরর দূর হবে না।
  */
 app.get("/cdn/:token", (req, res) => {
   const token = req.params.token;
   
-  // টোকেন থেকে অরিজিনাল ফাইল আইডি খুঁজে বের করা (MD5 Reverse matching)
+  // টোকেন থেকে অরিজিনাল ফাইল আইডি খুঁজে বের করা
   const id = Object.keys(fileMap).find(key => 
     crypto.createHash('md5').update(key).digest('hex') === token
   );
 
   const file = fileMap[id];
-  if (!file || !fs.existsSync(file)) return res.status(404).send("File not found");
+  if (!file || !fs.existsSync(file)) {
+      return res.status(404).send("File not found on Render server.");
+  }
 
-  // ফাইলটি সরাসরি ডাউনলোড বা প্লে করার জন্য পাঠানো
+  // ফাইলটি ডাউনলোড হিসেবে পাঠানো হবে
   res.download(path.resolve(file), `video_${Date.now()}.mp4`);
 });
 
 /**
- * ৩. Make MP4 endpoint
- * এখানে আমরা শর্ট ইউআরএল এর জায়গায় মাস্কড Vercel লিংক জেনারেট করছি।
+ * ২. মূল ভিডিও মেকার এন্ডপয়েন্ট
  */
 app.get("/make-mp4", (req, res) => {
   const url = req.query.url;
@@ -71,15 +74,15 @@ app.get("/make-mp4", (req, res) => {
   exec(cmd, { maxBuffer: 1024 * 1024 * 50 }, (err, stdout, stderr) => {
     if (err) return res.json({ status: "failed", message: stderr || err.message });
 
-    // ১. একটি র্যান্ডম আইডি তৈরি (Interal use only)
+    // একটি র্যান্ডম আইডি তৈরি করা
     const id = crypto.randomBytes(6).toString("hex");
     fileMap[id] = filepath;
     saveMap(); 
 
-    // ২. আইডিকে মাস্ক করে টোকেন তৈরি করা (Publicly visible)
+    // আইডিকে মাস্ক করে টোকেন তৈরি করা যা Vercel চিনতে পারবে
     const maskedToken = crypto.createHash('md5').update(id).digest('hex');
 
-    // ৩. ফাইনাল মাস্কড লিংক তৈরি (Vercel ডোমেইন দিয়ে)
+    // ফাইনাল মাস্কড লিংক (যা ইউজার দেখবে)
     const secureUrl = `${VERCEL_DOMAIN}/${maskedToken}`;
 
     res.json({
@@ -91,3 +94,4 @@ app.get("/make-mp4", (req, res) => {
 });
 
 app.listen(PORT, "0.0.0.0", () => console.log(`Server running on port ${PORT}`));
+
