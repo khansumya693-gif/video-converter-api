@@ -1,59 +1,44 @@
 import express from "express";
-import cors from "cors";
+import { exec } from "child_process";
 import fs from "fs";
 import path from "path";
-import { exec } from "child_process";
 
 const app = express();
-const PORT = process.env.PORT || 10000;
+const PORT = process.env.PORT || 3000;
 
-app.use(cors());
-app.use(express.json());
-
-const VIDEOS_DIR = path.resolve("videos");
-if (!fs.existsSync(VIDEOS_DIR)) fs.mkdirSync(VIDEOS_DIR);
-
-// ✅ Render health check
+// Health check
 app.get("/healthz", (req, res) => {
-  res.status(200).send("ok");
+  res.send("OK");
 });
 
-// ✅ Convert + download endpoint
-app.post("/convert", async (req, res) => {
-  try {
-    const { url } = req.body;
-    if (!url) return res.json({ status: "failed", message: "No URL provided" });
+// Convert endpoint
+app.get("/make-mp4", (req, res) => {
+  const url = req.query.url;
+  if (!url) return res.json({ status: "failed", message: "Missing url" });
 
-    const id = Date.now();
-    const file = `${id}.mp4`;
-    const output = path.join(VIDEOS_DIR, file);
+  if (!fs.existsSync("videos")) fs.mkdirSync("videos");
 
-    // 🔹 Best mp4 + audio merged
-    const cmd = `yt-dlp -f "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]" -o "${output}" "${url}"`;
+  const filename = `${Date.now()}.mp4`;
+  const out = path.join("videos", filename);
 
-    exec(cmd, (err, stdout, stderr) => {
-      if (err) {
-        console.error(stderr);
-        return res.json({ status: "failed", message: stderr });
-      }
+  const cmd = `yt-dlp --cookies ./cookies.txt --merge-output-format mp4 -f "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]" --js-runtimes node -o "${out}" "${url}"`;
 
-      return res.json({
-        status: "ok",
-        playback: `/videos/${file}`,
-        download: `/videos/${file}`,
-      });
+  exec(cmd, { maxBuffer: 1024 * 1024 * 50 }, (err, stdout, stderr) => {
+    if (err) {
+      return res.json({ status: "failed", message: stderr || err.message });
+    }
+
+    res.json({
+      status: "ok",
+      playback: `/videos/${filename}`,
+      download: `/videos/${filename}`
     });
-
-  } catch (e) {
-    console.error(e);
-    res.json({ status: "failed", message: e.message });
-  }
+  });
 });
 
-// ✅ Static video serving
-app.use("/videos", express.static(VIDEOS_DIR));
+// Static serve
+app.use("/videos", express.static("videos"));
 
-// ✅ Start server
 app.listen(PORT, "0.0.0.0", () => {
-  console.log(`Server running on ${PORT}`);
+  console.log("Server running on port", PORT);
 });
